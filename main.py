@@ -73,6 +73,24 @@ modelo.addConstrs(x[i,t] * RM[r] <= g[r,p,i,t] + h[r,p,i,t] for r in R_ for p in
 # R7
 modelo.addConstrs(h[r,p,i,t] == 0  for r in R_ for i in I_ for p in P_ for t in range(FV[r,p], m+1))
 
-objetivo = quicksum(a[t] for t in T_) 
+# Objetivo: Minimizar costos
+objetivo = quicksum(a[t] for t in T_)
 modelo.setObjective(objetivo, GRB.MINIMIZE)
+
+# Optimizar el modelo
 modelo.optimize()
+
+# Procesar resultados
+if modelo.status == GRB.OPTIMAL:
+    print("Valor objetivo:", modelo.objVal)
+    resultados = []
+    for i in I_:
+        for t in T_:
+            if x[i, t].X > 0:  # Solo mostrar resultados relevantes
+                resultados.append((i, t, x[i, t].X))
+
+    # Convertir resultados a DataFrame para una mejor visualización
+    df_resultados = pd.DataFrame(resultados, columns=["Albergue", "Día", "Cantidad de Personas"])
+    print(df_resultados)
+else:
+    print("No se encontró solución óptima.")
