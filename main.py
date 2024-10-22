@@ -1,7 +1,6 @@
 from gurobipy import Model, GRB, quicksum
-import pandas as pd
 from random import randint
-
+import pandas as pd
 
 
 # Parámetros
@@ -23,8 +22,8 @@ P_ = range(1, pv + 1)                                                       # Lo
 # Estos son solo para probar si funciona por ahora cuando consigamos los reales nos peleamos con pandas
 RMO = {(o): randint(1, 10) for o in O_}                                               # Requerimiento mínimo de recursos operativos
 RM = {(r): randint(1, 10) for r in R_}                                                # Requerimiento mínimo de recursos básicos
-FV = {(r, p): randint(1, 10) for r in R_ for p in P_}                                 # Fecha de vencimiento
-DG = {(i, t): randint(1, 10) for i in I_ for t in T_}                                 # Desechos generados
+FV = {(p): randint(1, 10) for p in P_}                                                # Fecha de vencimiento
+DG = randint(1, 10)                                                                   # Desechos generados
 C = {(i): randint(1, 10) for i in I_}                                                 # Costos de habilitación
 CR = {(r): randint(1, 10) for r in R_}                                                # Costos de recursos básicos
 CO = {(o): randint(1, 10) for o in O_}                                                # Costos de recursos operativos
@@ -35,7 +34,8 @@ CN = {(r, p, i, t): randint(1, 10) for r in R_ for p in P_ for i in I_ for t in 
 P = randint(1, 10)                                                                    # Presupuesto total
 A = {(i): randint(1, 10) for i in I_}                                                 # Recursos disponibles
 MP = {(i): randint(1, 10) for i in I_}                                                # Recursos asignados
-a = {(t): randint(1, 10) for t in T_}                                                 # Otros parámetros
+c = {(r): randint(1, 10) for r in R_}                                                 # Consumo recursos
+a = {(t): randint(1, 10) for t in T_}                                                 # Personas sin albergue
 
 
 modelo = Model()
@@ -46,25 +46,47 @@ modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
 x = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="x")               # Personas en cada albergue
 z = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z")               # Flujo de personas
 y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                # Habilitación de albergues
-g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")       # Recursos asignados
+g = modelo.addVars(P_, I_, T_, vtype=GRB.SEMIINT, name="g")           # Recursos asignados
 r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")           # Recursos operativos
-h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")       # Recursos básicos
+h = modelo.addVars(P_, I_, T_, vtype=GRB.SEMIINT, name="h")           # Recursos básicos
 b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")           # Recursos asignados a cada albergue
-T = modelo.addVars(R_, I_, I_, vtype=GRB.SEMIINT, name="T")           # Recursos transferidos
+T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")       # Recursos transferidos
 I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")           # Recursos asignados
 I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")   # Recursos asignados adicionales
 
 modelo.update()
 
 # Restricciones
-# R3: Control de flujo de personas
-modelo.addConstrs(x[i, t] == x[i, t] + z[i, t] for i in I_ for t in range(2, m))
-# R4: Control de habilitación de albergues
+
+# R1:
+modelo.addConstrs(x[i, 1] == z[i, 1] for i in I_)
+modelo.addConstrs(x[i, t] <= MP[i] * y[i, t] for i in I_ for t in T_)
+
+# R2: Control de flujo de personas
+modelo.addConstrs(x[i,1] == x[i, t-1] + z[i, 1] for i in I_ for t in range(2, m + 1))
+
+# R3: Control de habilitación de albergues
 modelo.addConstrs(x[i, t] * RMO[o] <= r[o, i, t] for o in O_ for i in I_ for t in T_)
+
+# R4: Control de recursos básicos
+modelo.addConstrs(x[i, t] * RM[r] <= g[r, p, i, t] + h[r, p, i, t] for p in P_ for r in R_ for i in I_ for t in T_)
+
 # R5: Control de recursos básicos
-modelo.addConstrs(x[i, t] * RM[r] <= g[r, p, i, t] + h[r, p, i, t] for r in R_ for p in P_ for i in I_ for t in T_)
-# R7: Control de recursos asignados
+modelo.addConstrs(I[r, p, t] == I[r, p, t] - quicksum(g[r, p, i, t] + h[r, p, i, t] for i in I_) for r in R_ for p in P_ for t in T_)
+
+# R6: Control de recursos asignados
 modelo.addConstrs(h[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t in range(FV[r, p], m + 1))
+modelo.addConstrs(g[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t in range(FV[r, p], m + 1))
+
+# R7: Eliminacion de inventario vencido
+modelo.addConstrs(I[r, p, t] == 0 for r in R_ for p in P_ for t in range(FV[r, p], m + 1))
+
+# R8: Cantidad de desechos generados
+modelo.addConstrs(b[r, i, t] == quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for t in range(FV[r, p], m + 1))
+
+# R9: Alimentos se consumen en orden segun su fecha de vencimiento
+modelo.addConstrs(quicksum(g[r, p, i, t] + h[r, p, i, t] for t in T_) == quicksum(g[r, p + 1, i, t] + h[r, p + 1, i, t] for t in T_) for i in I_ for p in range(1, pv))
+
 
 
 # Objetivo: Minimizar costos
