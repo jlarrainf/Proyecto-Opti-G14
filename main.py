@@ -6,12 +6,12 @@ import pandas as pd
 # Parámetros
 n = 15    # Número de albergues
 m = 30    # Número de días
-pv = 2   # Número de lotes de alimentos
+pv = 4   # Número de lotes de alimentos
 
 # Conjuntos
 I_ = range(1, n + 1)                                                        # Albergues
 T_ = range(1, m + 1)                                                        # Días
-Recursos_basicos = ["Alimentos", "Agua", "Insumos medicos"]                 # Recursos básicos
+Recursos_basicos = ["Alimentos", "Agua"]                                    # Recursos básicos
 R_ = range(1, len(Recursos_basicos) + 1)                                    # Recursos básicos
 Recursos_operativos = ["Colchonetas", "Mantas", "Ropa", "Kit de higiene"]   # Recursos operativos
 O_ = range(1, len(Recursos_operativos) + 1)                                 # Recursos operativos
@@ -47,7 +47,7 @@ o_df.index += 1
 
 RMR =  {(o): o_df["RMR_o"][o] for o in o_df.index}                                    # Requerimiento mínimo de recursos operativos
 RM = {(r): R_df["RM_r"][r] for r in R_df.index}                                       # Requerimiento mínimo de recursos básicos
-FV = {(column,i): fv[column][i] for i in fv.index for column in fv.columns}           # Fecha de vencimiento
+FV = {(r, p): fv.iloc[r-1, p-1] for r in R_ for p in P_}                              # Fecha de vencimiento
 DG = Escalares["Valores"][2]                                                          # Desechos generados
 C = {(i): Param_albergue["C_i"][i] for i in Param_albergue.index}                     # Costos de habilitación
 CR = {(r): R_df["CR_r (pesos)"][r] for r in R_df.index}                               # Costos de recursos básicos
@@ -72,13 +72,14 @@ modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
 x = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="x")               # Personas en cada albergue
 z = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z")               # Flujo de personas
 y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                # Habilitación de albergues
-g = modelo.addVars(P_, I_, T_, vtype=GRB.SEMIINT, name="g")           # Recursos asignados
+g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")           # Recursos asignados
 r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")           # Recursos operativos
-h = modelo.addVars(P_, I_, T_, vtype=GRB.SEMIINT, name="h")           # Recursos básicos
+h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")           # Recursos básicos
 b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")           # Recursos asignados a cada albergue
 T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")       # Recursos transferidos
 I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")           # Recursos asignados
 I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")   # Recursos asignados adicionales
+D = 1000
 
 a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")
 CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
@@ -110,25 +111,47 @@ modelo.addConstrs(g[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t i
 # R7: Eliminacion de inventario vencido
 modelo.addConstrs(I[r, p, t] == 0 for r in R_ for p in P_ for t in range(FV[r, p], m + 1))
 
-# R8: Cantidad de desechos generados
-#modelo.addConstrs(b[r, i, t] == quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for t in range(FV[r, p], m + 1))
+# R8: Eliminacion de inventario vencido
+modelo.addConstr(DG == quicksum(RM[r] for r in R_))
 
-# R9: Alimentos se consumen en orden segun su fecha de vencimiento
-modelo.addConstrs(quicksum(g[r, p, i, t] + h[r, p, i, t] for t in T_) == quicksum(g[r, p + 1, i, t] + h[r, p + 1, i, t] for t in T_) for i in I_ for p in range(1, pv))
+# R9: Cantidad de desechos generados
+modelo.addConstrs(b[r, i, t] == g[r, p, i, t] + h[r, p, i, t]  for i in I_ for r in R_  for p in P_ for t in range(FV[r, p], m + 1))
 
-# R10
+# R10: Alimentos se consumen en orden segun su fecha de vencimiento
+modelo.addConstrs(quicksum(g[r, p, i, t] + h[r, p, i, t] for t in T_) == 
+                  quicksum(g[r, p + 1, i, t] + h[r, p + 1, i, t] for t in T_) for r in R_ for i in I_ for p in range(1, pv))
 
+# R11
+modelo.addConstrs(I_A[r, p, i, 1] == 0  for i in I_ for p in P_ for r in R_)
+
+# R12
+modelo.addConstrs(CN[r, p, i, t] == RM[r] * x[i, t] for r in R_ for t in T_ for i in I_ for p in P_)
+
+# R13
+modelo.addConstrs(I_A[r, p, i, t+1]  == I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] + 
+                  quicksum(T[r,i,j,t] - T[r,j,i,t] for j in I_) for r in R_ for t in range(1,m) for i in I_ for p in P_)
+
+# R14
+modelo.addConstrs(CN[r,p,i,t] <= I_A[r,p,i,t] for r in R_ for t in T_ for i in I_ for p in P_)
+
+# R15
+modelo.addConstrs(quicksum(quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) 
+                           + quicksum(T[r,i,j,t] for j in I_) 
+                           for r in R_) <= A[i]
+                           for t in T_ for i in I_)
 
 
 
 # R16:
-modelo.addConstrs(quicksum(C[i] * y[i] + 
-                           quicksum(CT[i] * 
-                                    quicksum(g[r,p,i,t] + h[r,p,i,t] for p in P_ for r in R_) for t in T_) +
+modelo.addConstr(quicksum(C[i] * y[i, t] + CT[i] * 
+                                    quicksum(g[r,p,i,t] + h[r,p,i,t] for p in P_ for r in R_) +
                                     quicksum(CT2[i,j] * T[r,i,j,t] for r in R_ for i in I_ for j in I_) +
                                     quicksum(CO[o] * r[o,i,t] for o in O_) +
                                     quicksum(B[r] * b[r,i,t] for r in R_)
-                                    for i in I_) <= P)
+                                    for t in T_ for i in I_) <= P)
+
+# R17:
+modelo.addConstrs(a[t] == D - quicksum(x[i, t] for i in I_) for t in T_)
 
 # Objetivo: Minimizar costos
 objetivo = quicksum(a[t] for t in T_)
@@ -137,6 +160,7 @@ modelo.setObjective(objetivo, GRB.MINIMIZE)
 # Optimizar el modelo
 modelo.optimize()
 
+"""
 # Manejo de soluciones
 if modelo.status == GRB.OPTIMAL:
     print(f"Valor objetivo: {modelo.objVal}")
@@ -157,3 +181,4 @@ if modelo.status == GRB.OPTIMAL:
 
 # Tiempo de ejecución
 print(f"Tiempo de ejecución: {modelo.Runtime} segundos")
+"""
