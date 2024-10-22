@@ -6,7 +6,7 @@ import pandas as pd
 # Parámetros
 n = 15    # Número de albergues
 m = 30    # Número de días
-pv = 4   # Número de lotes de alimentos
+pv = 4    # Número de lotes de alimentos
 
 # Conjuntos
 I_ = range(1, n + 1)                                                        # Albergues
@@ -59,6 +59,8 @@ P = Escalares["Valores"][1]                                                     
 A = {(i): Param_albergue["A_i"][i] for i in Param_albergue.index}                     # Almacenamiento en bodega
 MP = {(i): Param_albergue["MP_i"][i] for i in Param_albergue.index}                   # Maximo de personas en albergue
 
+# Tengo que en O’Higgins para el 2010 130000 personas se quedaron sin vivienda
+D = 130000
 #a = {(t): randint(1, 10) for t in T_}                                                 # Personas sin albergue
 #CN = {(r, p, i, t): randint(1, 10) for r in R_ for p in P_ for i in I_ for t in T_}   # Costo de asignación
 
@@ -72,14 +74,14 @@ modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
 x = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="x")               # Personas en cada albergue
 z = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z")               # Flujo de personas
 y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                # Habilitación de albergues
-g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")           # Recursos asignados
+g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")       # Recursos asignados
 r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")           # Recursos operativos
-h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")           # Recursos básicos
+h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")       # Recursos básicos
 b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")           # Recursos asignados a cada albergue
 T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")       # Recursos transferidos
 I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")           # Recursos asignados
 I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")   # Recursos asignados adicionales
-D = 1000
+
 
 a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")
 CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
@@ -160,7 +162,7 @@ modelo.setObjective(objetivo, GRB.MINIMIZE)
 # Optimizar el modelo
 modelo.optimize()
 
-"""
+
 # Manejo de soluciones
 if modelo.status == GRB.OPTIMAL:
     print(f"Valor objetivo: {modelo.objVal}")
@@ -170,15 +172,14 @@ if modelo.status == GRB.OPTIMAL:
         for t in T_:
             if x[i, t].x > 0:  # Solo mostrar si la variable es mayor que cero
                 print(f"Albergue {i}, Día {t}: {x[i, t].x} personas")
-
+"""
     # Imprimir holguras de las restricciones
     for constr in modelo.getConstrs():
         print(constr, constr.getAttr("slack"))
 
     # Imprimir valores de variables duales
     for constr in modelo.getConstrs():
-        print(f"Variable dual para {constr.constrName}: {constr.pi}")
-
+        print(f"Variable dual para {constr.constrName}: {0}")
+"""
 # Tiempo de ejecución
 print(f"Tiempo de ejecución: {modelo.Runtime} segundos")
-"""
