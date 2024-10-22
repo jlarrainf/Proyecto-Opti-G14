@@ -82,7 +82,7 @@ modelo.addConstrs(g[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t i
 modelo.addConstrs(I[r, p, t] == 0 for r in R_ for p in P_ for t in range(FV[r, p], m + 1))
 
 # R8: Cantidad de desechos generados
-modelo.addConstrs(b[r, i, t] == quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for t in range(FV[r, p], m + 1))
+#modelo.addConstrs(b[r, i, t] == quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for t in range(FV[r, p], m + 1))
 
 # R9: Alimentos se consumen en orden segun su fecha de vencimiento
 modelo.addConstrs(quicksum(g[r, p, i, t] + h[r, p, i, t] for t in T_) == quicksum(g[r, p + 1, i, t] + h[r, p + 1, i, t] for t in T_) for i in I_ for p in range(1, pv))
