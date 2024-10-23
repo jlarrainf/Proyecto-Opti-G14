@@ -1,5 +1,5 @@
 from gurobipy import Model, GRB, quicksum
-from random import randint
+import numpy as np
 import pandas as pd
 
 
@@ -21,50 +21,36 @@ P_ = range(1, pv + 1)                                                       # Lo
 # Leemos los datos del excel
 excel_file = "datos.xlsx"
 
-comunas = pd.ExcelFile(excel_file).sheet_names
+sheets = pd.ExcelFile(excel_file).sheet_names
 
-fv = pd.read_excel(excel_file, sheet_name=comunas[1])
-fv.index += 1
+Param_albergue = pd.read_excel(excel_file, sheet_name=sheets[0])
 
-Escalares = pd.read_excel(excel_file, sheet_name=comunas[2])
-Escalares.index += 1
+R_df = pd.read_excel(excel_file, sheet_name=sheets[1])
 
-R_df = pd.read_excel(excel_file, sheet_name=comunas[3])
-R_df.index += 1
+o_df = pd.read_excel(excel_file, sheet_name=sheets[2])
 
-Param_albergue = pd.read_excel(excel_file, sheet_name=comunas[4])
-Param_albergue.index += 1
+fv = pd.read_excel(excel_file, sheet_name=sheets[3])
 
-ct = pd.read_excel(excel_file, sheet_name=comunas[5])
-ct.index += 1
+ct = pd.read_excel(excel_file, sheet_name=sheets[4])
 
-o_df = pd.read_excel(excel_file, sheet_name=comunas[6])
-o_df.index += 1
-
+Escalares = pd.read_excel(excel_file, sheet_name=sheets[5])
 
 
 # Parámetros
 
-RMR =  {(o): o_df["RMR_o"][o] for o in o_df.index}                                    # Requerimiento mínimo de recursos operativos
-RM = {(r): R_df["RM_r"][r] for r in R_df.index}                                       # Requerimiento mínimo de recursos básicos
-FV = {(r, p): fv.iloc[r-1, p-1] for r in R_ for p in P_}                              # Fecha de vencimiento
-DG = Escalares["Valores"][2]                                                          # Desechos generados
-C = {(i): Param_albergue["C_i"][i] for i in Param_albergue.index}                     # Costos de habilitación
-CR = {(r): R_df["CR_r (pesos)"][r] for r in R_df.index}                               # Costos de recursos básicos
-CO =  {(o): o_df["CO_o"][o] for o in o_df.index}                                      # Costos de recursos operativos
-CT = {(i): Param_albergue["CT_i"][i] for i in Param_albergue.index}                   # Costos de transporte
-CT2 = {(column,i): ct[column][i] for i in ct.index for column in I_}                  # Costos de transporte entre albergues
-B = {(r): R_df["B_r"][r] for r in R_df.index}                                         # Presupuesto por recurso
-P = Escalares["Valores"][1]                                                           # Presupuesto total
-A = {(i): Param_albergue["A_i"][i] for i in Param_albergue.index}                     # Almacenamiento en bodega
-MP = {(i): Param_albergue["MP_i"][i] for i in Param_albergue.index}                   # Maximo de personas en albergue
-
-# Tengo que en O’Higgins para el 2010 130000 personas se quedaron sin vivienda
-D = 130000
-#a = {(t): randint(1, 10) for t in T_}                                                 # Personas sin albergue
-#CN = {(r, p, i, t): randint(1, 10) for r in R_ for p in P_ for i in I_ for t in T_}   # Costo de asignación
-
-# CN y a no estan en el Excel
+RMR =  {(o): o_df.iloc[o+1, 4] for o in O_}                     # Requerimiento mínimo de recursos operativos
+RM = {(r): R_df.iloc[r+1, 4] for r in R_}                       # Requerimiento mínimo de recursos básicos
+FV = {(r, p): int(fv.iloc[r+2, p+2]) for r in R_ for p in P_}   # Fecha de vencimiento
+D = Escalares.iloc[3, 2]                                        # Desechos generados
+C = {(i): Param_albergue.iloc[i+1, 4] for i in I_}              # Costos de habilitación
+CR = {(r): R_df.iloc[r+1, 5] for r in R_}                       # Costos de recursos básicos
+CO =  {(o): o_df.iloc[o+1, 5] for o in O_}                      # Costos de recursos operativos
+CT = {(i): Param_albergue.iloc[i+1,2] for i in I_}              # Costos de transporte
+CT2 = {(i,j): ct.iloc[j+1,i+1] for i in I_ for j in I_}         # Costos de transporte entre albergues
+B = {(r): R_df.iloc[r+1, 6] for r in R_}                        # Presupuesto por recurso
+P = Escalares.iloc[2, 2]                                        # Presupuesto total
+A = {(i): Param_albergue.iloc[i+1,3] for i in I_}               # Almacenamiento en bodega
+MP = {(i): Param_albergue.iloc[i+1,5] for i in I_}              # Maximo de personas en albergue
 
 modelo = Model()
 modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
@@ -81,10 +67,11 @@ b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")           # Recursos
 T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")       # Recursos transferidos
 I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")           # Recursos asignados
 I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")   # Recursos asignados adicionales
-
+DG = modelo.addVar(vtype=GRB.SEMIINT, name="DG")
 
 a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")
 CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
+
 
 modelo.update()
 
