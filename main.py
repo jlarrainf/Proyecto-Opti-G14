@@ -95,7 +95,7 @@ A = {(i): A[i] for i in I_}                         # Almacenamiento en bodega
 MP = {(i): MP[i] for i in I_}                       # Maximo de personas en albergue
 
 D_t = {(t): 1 for t in T_}              ## TODO: Conseguir datos del excel
-tau = 0                                 ## TODO: Escalar
+tau = 2                                 ## TODO: Escalar
 DR = {(r,p): 1 for r in R_ for p in P_} ## TODO: Conseguir datos
 
 D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}
@@ -111,7 +111,7 @@ modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
 
 x = modelo.addVars(I_, T_,  vtype=GRB.SEMIINT, name="x")                # Personas en cada albergue
 y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                  # Habilitación de albergues
-z = modelo.addVars(I_, T_, vtype=GRB.INT, name="z")                     # Flujo de personas
+z = modelo.addVars(I_, T_, vtype=GRB.INTEGER, name="z")                     # Flujo de personas
 z_plus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_plus")
 z_minus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_minus")                
 g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")         # Recursos asignados
@@ -156,7 +156,7 @@ modelo.addConstrs(b[r, i, t] == I_A[r, p, i, t] for i in I_ for r in R_ for p in
 modelo.addConstrs(b[r, i, t] == 0 for i in I_ for r in R_ for p in P_ for t in range(1, FV[r, p] + 1))
 
 # R8:
-modelo.addConstr(I_A[r, p, i, 1] == 0 for r in R_ for p in P_ for i in I_)
+modelo.addConstrs(I_A[r, p, i, 1] == 0 for r in R_ for i in I_ for p in P_ )
 
 # R9:
 modelo.addConstrs(I_A[r, p, i, t]  == I_A[r, p, i, t-1] + g[r, p, i, t-1] + h[r, p, i, t-1] + 
