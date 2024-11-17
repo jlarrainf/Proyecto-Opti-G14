@@ -2,13 +2,18 @@ from gurobipy import Model, GRB, quicksum
 import numpy as np
 import pandas as pd
 
+## TODO:    - Comentar el archivo 
+#           - Explicar restricciones y variables nuevas
+#           - Manejo de soluciones
+#           - Conseguir valores para los nuevos parametros
 
-# Parámetros
+
+# ============================== Conjuntos ==============================
+
 n = 15    # Número de albergues
 m = 30    # Número de días
 pv = 4    # Número de lotes de alimentos
 
-# Conjuntos 
 I_ = range(1, n + 1)                                                        # Albergues
 T_ = range(1, m + 1)                                                        # Días
 Recursos_basicos = ["Alimentos", "Agua"]                                    # Recursos básicos
@@ -17,6 +22,8 @@ Recursos_operativos = ["Colchonetas", "Mantas", "Ropa", "Kit de higiene"]   # Re
 O_ = range(1, len(Recursos_operativos) + 1)                                 # Recursos operativos
 P_ = range(1, pv + 1)                                                       # Lotes de alimentos
 
+
+# =========================== Manejo de Datos ===========================
 
 # Abrimos el archivo de datos de la entrega
 excel_file = "datos.xlsx"
@@ -72,12 +79,11 @@ CT2.index -= 1
 # En el siguiente paso transformamos estos DataFrames en diccionarios para mayor facilidad de uso en el modelo
 
 
-# Parámetros
+# ============================= Parámetros =============================
 
-RMR = {(o): RMR[o] for o in O_}                     # Requerimiento mínimo de recursos operativos
+RMO = {(o): RMR[o] for o in O_}                     # Requerimiento mínimo de recursos operativos
 RM = {(r): RM[r] for r in R_}                       # Requerimiento mínimo de recursos básicos
 FV = {(r, p): FV[p][r] for r in R_ for p in P_}     # Fecha de vencimiento
-D = Escalares.iloc[3, 2]                            # Desechos generados
 C = {(i): C[i] for i in I_}                         # Costos de habilitación
 CR = {(r): CR[r] for r in R_}                       # Costos de recursos básicos
 CO =  {(o): CO[o] for o in O_}                      # Costos de recursos operativos
@@ -88,26 +94,33 @@ P = Escalares.iloc[2, 2]                            # Presupuesto total
 A = {(i): A[i] for i in I_}                         # Almacenamiento en bodega
 MP = {(i): MP[i] for i in I_}                       # Maximo de personas en albergue
 
+D_t = {(t): 1 for t in T_}              ## TODO: Conseguir datos del excel
+tau = 0                                 ## TODO: Escalar
+DR = {(r,p): 1 for r in R_ for p in P_} ## TODO: Conseguir datos
+
+D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}
+DG = sum(RM[r] for r in R_)
+
+
 
 # Iniciacion del modelo
 modelo = Model()
 modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
-# modelo.setParam("LogFile", "log.txt")
 
-# Variables
-x = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="x")               # Personas en cada albergue
-z = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z")               # Flujo de personas
-y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                # Habilitación de albergues
-g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")       # Recursos asignados
-r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")           # Recursos operativos
-h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")       # Recursos básicos
-b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")           # Recursos asignados a cada albergue
-T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")       # Recursos transferidos
-I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")           # Recursos asignados
-I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")   # Recursos asignados adicionales
+# ============================= Variables =============================
 
-DG = modelo.addVar(vtype=GRB.SEMIINT, name="DG")
-
+x = modelo.addVars(I_, T_,  vtype=GRB.SEMIINT, name="x")                # Personas en cada albergue
+y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                  # Habilitación de albergues
+z = modelo.addVars(I_, T_, vtype=GRB.INT, name="z")                     # Flujo de personas
+z_plus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_plus")
+z_minus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_minus")                
+g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")         # Recursos asignados
+r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")             # Recursos operativos
+h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")         # Recursos básicos
+b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")             # Recursos asignados a cada albergue
+T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")         # Recursos transferidos
+I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")             # Recursos asignados
+I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")     # Recursos asignados adicionales
 a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")
 CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
 
@@ -115,7 +128,7 @@ CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
 # Actualizamos el modelo
 modelo.update()
 
-# =========================== Restricciones ============================
+# =========================== Restricciones ===========================
 
 # R1:
 modelo.addConstrs(x[i, 1] == z[i, 1] for i in I_)
@@ -123,68 +136,65 @@ modelo.addConstrs(x[i, t] <= MP[i] * y[i, t] for i in I_ for t in T_)
 
 # R2: Control de flujo de personas
 modelo.addConstrs(x[i,1] == x[i, t-1] + z[i, 1] for i in I_ for t in range(2, m + 1))
+modelo.addConstrs(x[i,1] >= x[i, t-1] - z[i, 1] for i in I_ for t in range(2, m + 1))
 
 # R3: Control de habilitación de albergues
 modelo.addConstrs(x[i, t] * RMR[o] <= r[o, i, t] for o in O_ for i in I_ for t in T_)
 
 # R4: Control de recursos básicos
-modelo.addConstrs(x[i, t] * RM[r] <= g[r, p, i, t] + h[r, p, i, t] for p in P_ for r in R_ for i in I_ for t in T_)
+modelo.addConstrs(x[i, t] * RM[r] <= quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for i in I_ for t in T_)
 
 # R5: Control de recursos básicos
-modelo.addConstrs(I[r, p, t] == I[r, p, t] - quicksum(g[r, p, i, t] + h[r, p, i, t] for i in I_) for r in R_ for p in P_ for t in T_)
+modelo.addConstrs(I[r, p, 1] == DR[r, p] for r in R_ for p in P_)
+modelo.addConstrs(I[r, p, t + 1] == I[r, p, t] - quicksum(h[r, p, i, t] for i in I_) for r in R_ for p in P_ for t in range(1, m))
 
 # R6: Control de recursos asignados
-modelo.addConstrs(h[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t in range(FV[r, p], m + 1))
-modelo.addConstrs(g[r, p, i, t] == 0 for r in R_ for i in I_ for p in P_ for t in range(FV[r, p], m + 1))
+modelo.addConstrs(quicksum(h[r, p, i, t] + g[r, p, i, t] for i in I_) == 0 for r in R_ for p in P_ for t in range(FV[r, p] + 1, m + 1))
 
-# R7: Eliminacion de inventario vencido
-modelo.addConstrs(I[r, p, t] == 0 for r in R_ for p in P_ for t in range(FV[r, p], m + 1))
+# R7:
+modelo.addConstrs(b[r, i, t] == I_A[r, p, i, t] for i in I_ for r in R_ for p in P_ for t in range(FV[r, p] + 1, m + 1))
+modelo.addConstrs(b[r, i, t] == 0 for i in I_ for r in R_ for p in P_ for t in range(1, FV[r, p] + 1))
 
-# R8: Eliminacion de inventario vencido
-modelo.addConstr(DG == quicksum(RM[r] for r in R_))
+# R8:
+modelo.addConstr(I_A[r, p, i, 1] == 0 for r in R_ for p in P_ for i in I_)
 
-# R9: Cantidad de desechos generados
-modelo.addConstrs(b[r, i, t] == g[r, p, i, t] + h[r, p, i, t]  for i in I_ for r in R_  for p in P_ for t in range(FV[r, p], m + 1))
+# R9:
+modelo.addConstrs(I_A[r, p, i, t]  == I_A[r, p, i, t-1] + g[r, p, i, t-1] + h[r, p, i, t-1] + 
+                  quicksum(T[r,j,i,t-1] - T[r,i,j,t-1] for j in I_ if j != i) - CN[r, p, i, t-1] for r in R_ for t in range(2,m) for i in I_ for p in P_)
 
-# R10: Alimentos se consumen en orden segun su fecha de vencimiento
-modelo.addConstrs(quicksum(g[r, p, i, t] + h[r, p, i, t] for t in T_) <=
-                  quicksum(g[r, p + 1, i, t] + h[r, p + 1, i, t] for t in T_) for r in R_ for i in I_ for p in range(1, pv))
+# R10
+modelo.addConstrs(quicksum(CN[r, p, i, t] for p in P_) == RM[r] * x[i, t] for r in R_ for t in T_ for i in I_)
 
 # R11
-modelo.addConstrs(I_A[r, p, i, 1] == 0  for i in I_ for p in P_ for r in R_)
+modelo.addConstrs(CN[r, p, i, t] <= I_A[r, p, i, t] for r in R_ for t in T_ for i in I_ for p in P_)
 
 # R12
-modelo.addConstrs(CN[r, p, i, t] == RM[r] * x[i, t] for r in R_ for t in T_ for i in I_ for p in P_)
+modelo.addConstrs(quicksum(h[r, p, i, t] for p in P_ for i in I_ for t in T_) <= D_r[r] for r in R_)
+
 
 # R13
-modelo.addConstrs(I_A[r, p, i, t+1]  == I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] + 
-                  quicksum(T[r,j,i,t] - T[r,i,j,t] for j in I_ if j != i) for r in R_ for t in range(1,m) for i in I_ for p in P_)
+modelo.addConstrs(quicksum( I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] + 
+                            quicksum(T[r,i,j,t] for j in I_ if j != i) for p in P_ for r in R_) <= A[i]
+                            for t in T_ for i in I_)
 
 # R14
-modelo.addConstrs(CN[r,p,i,t] <= I_A[r,p,i,t] for r in R_ for t in T_ for i in I_ for p in P_)
+modelo.addConstrs(r[o, i, t] == r[o, i, t-1] for o in O_ for i in I_ for t in range(2, m+1))
 
-# R15
-modelo.addConstrs(quicksum(quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) 
-                           + quicksum(T[r,i,j,t] for j in I_ if j != i) 
-                           for r in R_) <= A[i]
-                           for t in T_ for i in I_)
-
-
+# R15:
+modelo.addConstrs(quicksum(r[o, i, t] for o in O_) <= A[i] for i in I_ for t in T_)
 
 # R16:
-modelo.addConstr(   quicksum(   C[i] * y[i, t] + 
-                                CT[i] * quicksum(g[r,p,i,t] + h[r,p,i,t] for p in P_ for r in R_) +
-                                quicksum(CT2[i,j] * T[r,i,j,t] for r in R_ for j in I_ if j != i) +
-                                quicksum(CR[r] * g[r,p,i,t] for p in P_ for r in R_) +
-                                quicksum(CO[o] * r[o,i,t] for o in O_) +
-                                quicksum(B[r] * b[r,i,t] for r in R_)
-                    for t in T_ for i in I_) <= P)
+modelo.addConstrs(z_minus[i, t] == 0 for i in I_ for t in range(1, tau))
+modelo.addConstrs(z_minus[i, t] <= quicksum(z_plus[i, k] for k in range(t - tau + 1, t + 1)) for i in I_ for t in range(tau, m + 1))
 
 # R17:
-modelo.addConstrs(a[t] == D - quicksum(x[i, t] for i in I_) for t in T_)
+modelo.addConstrs(z[i, t] == z_plus[i, t] - z_minus[i, t] for i in I_ for t in T_)
+
+# R18:
+modelo.addConstrs(a[t] == D_t[t] - quicksum(x[i, t] for i in I_) for t in T_)
 
 
-# Objetivo: Minimizar costos
+# Funcion Objetivo: Minimizar costos
 objetivo = quicksum(a[t] for t in T_)
 modelo.setObjective(objetivo, GRB.MINIMIZE)
 
@@ -193,7 +203,11 @@ modelo.optimize()
 
 # =========================== Manejo de soluciones ============================
 
+### TODO: Toda esta parte la verdad
+
 print("\n\n====================== Caracteristicas del modelo ===========================")
+
+
 gap = modelo.getAttr("MIPGap")
 n_res = len(modelo.getConstrs())
 n_vars = len(modelo.getVars())
