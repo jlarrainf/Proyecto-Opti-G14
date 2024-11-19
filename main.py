@@ -68,7 +68,7 @@ RMR.index -= 1
 CO = pd.Series(o_df.iloc[2:,5])
 CO.index -= 1
 
-FV = pd.DataFrame(fv.iloc[3:,3:], dtype=np.int64)
+FV = pd.DataFrame(fv.iloc[3:,3:])
 FV.index -= 2
 FV.columns = P_
 
@@ -94,14 +94,12 @@ P = Escalares.iloc[2, 2]                            # Presupuesto total
 A = {(i): A[i] for i in I_}                         # Almacenamiento en bodega
 MP = {(i): MP[i] for i in I_}                       # Maximo de personas en albergue
 
-D_t = {(t): 1 for t in T_}              ## TODO: Conseguir datos del excel
-tau = 2                                 ## TODO: Escalar
-DR = {(r,p): 1 for r in R_ for p in P_} ## TODO: Conseguir datos
+D_t = {(t): 10 for t in T_}                       ## TODO: Conseguir datos del excel
+tau = 15                                          ## TODO: Escalar
+DR = {(r,p): 100 for r in R_ for p in P_}         ## TODO: Conseguir datos
 
 D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}
 DG = sum(RM[r] for r in R_)
-
-
 
 # Iniciacion del modelo
 modelo = Model()
@@ -149,24 +147,24 @@ modelo.addConstrs(I[r, p, 1] == DR[r, p] for r in R_ for p in P_)
 modelo.addConstrs(I[r, p, t + 1] == I[r, p, t] - quicksum(h[r, p, i, t] for i in I_) for r in R_ for p in P_ for t in range(1, m))
 
 # R6: Control de recursos asignados
-modelo.addConstrs(quicksum(h[r, p, i, t] + g[r, p, i, t] for i in I_) == 0 for r in R_ for p in P_ for t in range(FV[r, p] + 1, m + 1))
+modelo.addConstrs(quicksum(h[r, p, i, t] + g[r, p, i, t] for i in I_) == 0 for r in R_ for p in P_ for t in T_ if t > FV[r,p])
 
 # R7:
-modelo.addConstrs(b[r, i, t] == I_A[r, p, i, t] for i in I_ for r in R_ for p in P_ for t in range(FV[r, p] + 1, m + 1))
-modelo.addConstrs(b[r, i, t] == 0 for i in I_ for r in R_ for p in P_ for t in range(1, FV[r, p] + 1))
+modelo.addConstrs(b[r, i, t] == I_A[r, p, i, t] for r in R_ for p in P_ for i in I_ for t in T_ if t > FV[r,p])
+modelo.addConstrs(b[r, i, t] == 0 for r in R_ for p in P_ for i in I_ for t in T_ if t <= FV[r,p])
 
 # R8:
-modelo.addConstrs(I_A[r, p, i, 1] == 0 for r in R_ for i in I_ for p in P_ )
+modelo.addConstrs(I_A[r, p, i, 1] == 0 for r in R_ for p in P_ for i in I_)
 
 # R9:
 modelo.addConstrs(I_A[r, p, i, t]  == I_A[r, p, i, t-1] + g[r, p, i, t-1] + h[r, p, i, t-1] + 
-                  quicksum(T[r,j,i,t-1] - T[r,i,j,t-1] for j in I_ if j != i) - CN[r, p, i, t-1] for r in R_ for t in range(2,m) for i in I_ for p in P_)
+                  quicksum(T[r,j,i,t-1] - T[r,i,j,t-1] for j in I_ if j != i) - CN[r, p, i, t-1] for r in R_ for p in P_ for i in I_  for t in range(2,m+1))
 
 # R10
-modelo.addConstrs(quicksum(CN[r, p, i, t] for p in P_) == RM[r] * x[i, t] for r in R_ for t in T_ for i in I_)
+modelo.addConstrs(quicksum(CN[r, p, i, t] for p in P_) == RM[r] * x[i, t] for r in R_  for i in I_ for t in T_)
 
 # R11
-modelo.addConstrs(CN[r, p, i, t] <= I_A[r, p, i, t] for r in R_ for t in T_ for i in I_ for p in P_)
+modelo.addConstrs(CN[r, p, i, t] <= I_A[r, p, i, t] for r in R_ for p in P_ for i in I_ for t in T_)
 
 # R12
 modelo.addConstrs(quicksum(h[r, p, i, t] for p in P_ for i in I_ for t in T_) <= D_r[r] for r in R_)
@@ -174,8 +172,8 @@ modelo.addConstrs(quicksum(h[r, p, i, t] for p in P_ for i in I_ for t in T_) <=
 
 # R13
 modelo.addConstrs(quicksum( I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] + 
-                            quicksum(T[r,i,j,t] for j in I_ if j != i) for p in P_ for r in R_) <= A[i]
-                            for t in T_ for i in I_)
+                            quicksum(T[r,i,j,t] for j in I_ if j != i) for r in R_ for p in P_ ) <= A[i]
+                            for i in I_ for t in T_)
 
 # R14
 modelo.addConstrs(r[o, i, t] == r[o, i, t-1] for o in O_ for i in I_ for t in range(2, m+1))
@@ -212,23 +210,41 @@ gap = modelo.getAttr("MIPGap")
 n_res = len(modelo.getConstrs())
 n_vars = len(modelo.getVars())
 
-
 print(f"gap: {gap}")
 print(f"Numero de Variables: {n_vars}")
 print(f"Numero de Restricciones: {n_res}")
 
 # Tiempo de ejecución
 print(f"Tiempo de ejecución: {modelo.Runtime} segundos")
+print(f"Valor objetivo: {modelo.objVal}")
 
+row = {
+    "x": [sum(x[i,t].x for i in I_) for t in T_],
+    "y": [sum(y[i,t].x for i in I_) for t in T_],
+    "z": [sum(z[i,t].x for i in I_) for t in T_],
+    "z_plus": [sum(z_plus[i,t].x for i in I_) for t in T_],
+    "z_minus": [sum(z_minus[i,t].x for i in I_) for t in T_],
+    "g": [sum(g[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
+    "r": [sum(r[o,i,t].x for i in I_ for o in O_) for t in T_],
+    "h": [sum(h[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
+    "b": [sum(b[r,i,t].x for i in I_ for r in R_) for t in T_],
+    "T": [sum(T[r,i,j,t].x for i in I_ for j in I_ for r in R_) for t in T_],
+    "I": [sum(I[r,p,t].x for i in I_ for r in R_ for p in P_) for t in T_],
+    "I_A": [sum(I_A[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
+    "a": [a[t].x for t in T_], 
+    "CN": [sum(CN[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_]
+}
 
+df = pd.DataFrame.from_dict(row)
 
+"""
 if modelo.status == GRB.OPTIMAL:
     print(f"Valor objetivo: {modelo.objVal}")
 
     # Imprimir los valores de las variables de decisión
     for i,t in x:
         print(f"Se encuentran {x[i,t].X} personas en el albergue {i} el dia {t}")
-
+"""
 
 """
 
