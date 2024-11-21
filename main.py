@@ -2,10 +2,15 @@ from gurobipy import Model, GRB, quicksum
 import numpy as np
 import pandas as pd
 
+# Para la creacion de graficos
+import matplotlib.pyplot as plt
+
+
 ## TODO:    - Comentar el archivo 
 #           - Explicar restricciones y variables nuevas
 #           - Manejo de soluciones
 #           - Conseguir valores para los nuevos parametros
+#           - Justificar el importar matplotlib
 
 
 # ============================== Conjuntos ==============================
@@ -25,7 +30,7 @@ P_ = range(1, pv + 1)                                                       # Lo
 
 # =========================== Manejo de Datos ===========================
 
-# Abrimos el archivo de datos de la entrega
+# Se extraen los datps del mismo archivo de la entrega
 excel_file = "datos.xlsx"
 
 # Creamos un DataFrame de pandas para cada pagina del excel
@@ -98,20 +103,20 @@ D_t = {(t): 10 for t in T_}                       ## TODO: Conseguir datos del e
 tau = 15                                          ## TODO: Escalar
 DR = {(r,p): 100 for r in R_ for p in P_}         ## TODO: Conseguir datos
 
-D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}
-DG = sum(RM[r] for r in R_)
+D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}   # Cantidad inicial total de donaciones del recurso r
+DG = sum(RM[r] for r in R_)                         # Cantidad de desechos generados
 
 # Iniciacion del modelo
 modelo = Model()
-modelo.setParam("TimeLimit", 5 * 60)  #Limite 5 minutos
+modelo.setParam("TimeLimit", 5 * 60)  # Seteamos un tiempo limite de 5 minutos
 
 # ============================= Variables =============================
 
 x = modelo.addVars(I_, T_,  vtype=GRB.SEMIINT, name="x")                # Personas en cada albergue
 y = modelo.addVars(I_, T_, vtype=GRB.BINARY, name="y")                  # Habilitación de albergues
-z = modelo.addVars(I_, T_, vtype=GRB.INTEGER, name="z")                     # Flujo de personas
-z_plus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_plus")
-z_minus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_minus")                
+z = modelo.addVars(I_, T_, vtype=GRB.INTEGER, name="z")                 # Flujo de personas
+z_plus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_plus")       # Personas que ingresan al albergue
+z_minus = modelo.addVars(I_, T_, vtype=GRB.SEMIINT, name="z_minus")     # Personas que se retiran del albergue
 g = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="g")         # Recursos asignados
 r = modelo.addVars(O_, I_, T_, vtype=GRB.SEMIINT, name="r")             # Recursos operativos
 h = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="h")         # Recursos básicos
@@ -119,16 +124,16 @@ b = modelo.addVars(R_, I_, T_, vtype=GRB.SEMIINT, name="b")             # Recurs
 T = modelo.addVars(R_, I_, I_, T_, vtype=GRB.SEMIINT, name="T")         # Recursos transferidos
 I = modelo.addVars(R_, P_, T_, vtype=GRB.SEMIINT, name="I")             # Recursos asignados
 I_A = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="I_A")     # Recursos asignados adicionales
-a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")
-CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")
+a = modelo.addVars(T_, vtype=GRB.SEMIINT, name="a")                     # Personas sin albergue por dia
+CN = modelo.addVars(R_, P_, I_, T_, vtype=GRB.SEMIINT, name="CN")       # Recursos consumidos
 
 
-# Actualizamos el modelo
+# Actualizamos el modelo para guardar las variables
 modelo.update()
 
 # =========================== Restricciones ===========================
 
-# R1:
+# R1: Catidad inicial y maxima de personas
 modelo.addConstrs(x[i, 1] == z[i, 1] for i in I_)
 modelo.addConstrs(x[i, t] <= MP[i] * y[i, t] for i in I_ for t in T_)
 
@@ -136,24 +141,24 @@ modelo.addConstrs(x[i, t] <= MP[i] * y[i, t] for i in I_ for t in T_)
 modelo.addConstrs(x[i,1] == x[i, t-1] + z[i, 1] for i in I_ for t in range(2, m + 1))
 modelo.addConstrs(x[i,1] >= x[i, t-1] - z[i, 1] for i in I_ for t in range(2, m + 1))
 
-# R3: Control de habilitación de albergues
+# R3: Control de recursos operativos
 modelo.addConstrs(x[i, t] * RMR[o] <= r[o, i, t] for o in O_ for i in I_ for t in T_)
 
 # R4: Control de recursos básicos
 modelo.addConstrs(x[i, t] * RM[r] <= quicksum(g[r, p, i, t] + h[r, p, i, t] for p in P_) for r in R_ for i in I_ for t in T_)
 
-# R5: Control de recursos básicos
+# R5: Actualizacion diaria de recursos y donaciones
 modelo.addConstrs(I[r, p, 1] == DR[r, p] for r in R_ for p in P_)
 modelo.addConstrs(I[r, p, t + 1] == I[r, p, t] - quicksum(h[r, p, i, t] for i in I_) for r in R_ for p in P_ for t in range(1, m))
 
-# R6: Control de recursos asignados
+# R6: Prohibicion de asignacion de recursos y donaciones vencidas
 modelo.addConstrs(quicksum(h[r, p, i, t] + g[r, p, i, t] for i in I_) == 0 for r in R_ for p in P_ for t in T_ if t > FV[r,p])
 
-# R7:
+# R7: Desechos generados
 modelo.addConstrs(b[r, i, t] == I_A[r, p, i, t] for r in R_ for p in P_ for i in I_ for t in T_ if t > FV[r,p])
 modelo.addConstrs(b[r, i, t] == 0 for r in R_ for p in P_ for i in I_ for t in T_ if t <= FV[r,p])
 
-# R8:
+# R8: Inventario inicial
 modelo.addConstrs(I_A[r, p, i, 1] == 0 for r in R_ for p in P_ for i in I_)
 
 # R9:
@@ -203,40 +208,99 @@ modelo.optimize()
 
 ### TODO: Toda esta parte la verdad
 
+
+# El output en consola de este programa son los datos sobre el modelo, los datos sobre las variables
+# seran guardados en la carpeta de resultados
 print("\n\n====================== Caracteristicas del modelo ===========================")
 
 
+# Imprimir gap del modelo
 gap = modelo.getAttr("MIPGap")
-n_res = len(modelo.getConstrs())
-n_vars = len(modelo.getVars())
-
 print(f"gap: {gap}")
+
+# Numero de variables
+n_vars = len(modelo.getVars())
 print(f"Numero de Variables: {n_vars}")
+
+# Numero de restricciones
+n_res = len(modelo.getConstrs())
 print(f"Numero de Restricciones: {n_res}")
+
+
+# Numero de Restricciones Activas
+n_res_activas = 0       # Contamos el numero de restricciones con slack 0
+for constr in modelo.getConstrs():
+    if constr.getAttr("slack") == 0:
+        n_res_activas += 1
+
+print(f"Numero Restricciones Activas: {n_res_activas}")
+
 
 # Tiempo de ejecución
 print(f"Tiempo de ejecución: {modelo.Runtime} segundos")
-print(f"Valor objetivo: {modelo.objVal}")
 
-row = {
-    "x": [sum(x[i,t].x for i in I_) for t in T_],
-    "y": [sum(y[i,t].x for i in I_) for t in T_],
-    "z": [sum(z[i,t].x for i in I_) for t in T_],
-    "z_plus": [sum(z_plus[i,t].x for i in I_) for t in T_],
-    "z_minus": [sum(z_minus[i,t].x for i in I_) for t in T_],
-    "g": [sum(g[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
-    "r": [sum(r[o,i,t].x for i in I_ for o in O_) for t in T_],
-    "h": [sum(h[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
-    "b": [sum(b[r,i,t].x for i in I_ for r in R_) for t in T_],
-    "T": [sum(T[r,i,j,t].x for i in I_ for j in I_ for r in R_) for t in T_],
-    "I": [sum(I[r,p,t].x for i in I_ for r in R_ for p in P_) for t in T_],
-    "I_A": [sum(I_A[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_],
-    "a": [a[t].x for t in T_], 
-    "CN": [sum(CN[r,p,i,t].x for i in I_ for r in R_ for p in P_) for t in T_]
-}
+# Valor optimo del modelo
+print(f"Valor Optimo: {modelo.objVal}")
 
-df = pd.DataFrame.from_dict(row)
 
+
+# =================== Guardas valores de las variables ======================
+
+Variables = [x,y,z,z_plus,z_minus,g,r,h,b,T,I,I_A,a,CN]
+VarNames = ["x","y","z","z_plus","z_minus","g","r","h","b","T","I","I_A","a","CN"]
+Indexes = [["i","t"], ["i","t"], ["i","t"], ["i","t"], ["i","t"], 
+           ["r", "p", "i","t"], ["o", "i","t"], ["r", "p", "i","t"], 
+           ["r", "i","t"], ["r", "i", "i'","t"], ["r", "p", "t"], ["r", "p", "i","t"], ["t"], ["r", "p", "i","t"]]
+
+for v, name, indx in zip(Variables, VarNames, Indexes):
+    lst = []
+    if name == "a":
+        for _ in v:
+            data = (_,v[_].x)
+            lst.append(data)
+    else:
+        for _ in v:      
+            data = _ + (v[_].x,)
+            lst.append(data)
+    
+    indx.append(name)
+    columns = indx
+    df = pd.DataFrame(lst, columns=columns)
+    
+    df.to_csv(f"Resultados/Vars/{name}.csv", columns=columns, header=True)
+
+
+
+# ======================= Creacion de Graficos ============================
+
+# Grafico cantidad de personas en todos los albergues por dia
+plt.style.use('ggplot')
+
+y_axis = [sum(x[i,t].X for i in I_) for t in T_]
+x_axis = T_
+
+# plot
+fig, ax = plt.subplots()
+
+ax.bar(x_axis, y_axis, width=1, edgecolor="white", linewidth=0.7)
+
+ax.set(xlim=(0, 8), xticks=np.arange(1, 8),
+       ylim=(0, 8), yticks=np.arange(1, 8))
+
+plt.savefig("Resultados/Graficos/Cantidad de personas refugiadas por dia")
+
+
+
+
+
+
+
+
+
+
+
+
+# TODO: Interpretacion de los resultados
 """
 if modelo.status == GRB.OPTIMAL:
     print(f"Valor objetivo: {modelo.objVal}")
@@ -244,15 +308,4 @@ if modelo.status == GRB.OPTIMAL:
     # Imprimir los valores de las variables de decisión
     for i,t in x:
         print(f"Se encuentran {x[i,t].X} personas en el albergue {i} el dia {t}")
-"""
-
-"""
-
-    # Imprimir holguras de las restricciones
-    for constr in modelo.getConstrs():
-        print(constr, constr.getAttr("slack"))
-
-    # Imprimir valores de variables duales
-    for constr in modelo.getConstrs():
-        print(f"Variable dual para {constr.constrName}: {0}")
 """
