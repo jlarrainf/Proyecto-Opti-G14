@@ -30,7 +30,7 @@ P_ = range(1, pv + 1)                                                       # Lo
 
 # =========================== Manejo de Datos ===========================
 
-# Se extraen los datps del mismo archivo de la entrega
+# Se extraen los datos del mismo archivo de la entrega
 excel_file = "datos.xlsx"
 
 # Creamos un DataFrame de pandas para cada pagina del excel
@@ -99,9 +99,11 @@ P = Escalares.iloc[2, 2]                            # Presupuesto total
 A = {(i): A[i] for i in I_}                         # Almacenamiento en bodega
 MP = {(i): MP[i] for i in I_}                       # Maximo de personas en albergue
 
-D_t = {(t): 10 for t in T_}                       ## TODO: Conseguir datos del excel
-tau = 15                                          ## TODO: Escalar
-DR = {(r,p): 100 for r in R_ for p in P_}         ## TODO: Conseguir datos
+## TODO: Conseguir datos del excel
+D_t = {(t): 10 for t in T_}                         # Demanda diaria de alojamiento
+tau = 15                                            # Tiempo de permanencia minima en un albergue
+DR = {(r,p): 100 for r in R_ for p in P_}           # Cantidad inicial de donaciones
+
 
 D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}   # Cantidad inicial total de donaciones del recurso r
 DG = sum(RM[r] for r in R_)                         # Cantidad de desechos generados
@@ -161,43 +163,42 @@ modelo.addConstrs(b[r, i, t] == 0 for r in R_ for p in P_ for i in I_ for t in T
 # R8: Inventario inicial
 modelo.addConstrs(I_A[r, p, i, 1] == 0 for r in R_ for p in P_ for i in I_)
 
-# R9:
+# R9: Balance de inventario
 modelo.addConstrs(I_A[r, p, i, t]  == I_A[r, p, i, t-1] + g[r, p, i, t-1] + h[r, p, i, t-1] + 
                   quicksum(T[r,j,i,t-1] - T[r,i,j,t-1] for j in I_ if j != i) - CN[r, p, i, t-1] for r in R_ for p in P_ for i in I_  for t in range(2,m+1))
 
-# R10
+# R10: Consumo de recursos
 modelo.addConstrs(quicksum(CN[r, p, i, t] for p in P_) == RM[r] * x[i, t] for r in R_  for i in I_ for t in T_)
 
-# R11
+# R11: Limite de inventario
 modelo.addConstrs(CN[r, p, i, t] <= I_A[r, p, i, t] for r in R_ for p in P_ for i in I_ for t in T_)
 
-# R12
+# R12: Limite de donaciones asignadas
 modelo.addConstrs(quicksum(h[r, p, i, t] for p in P_ for i in I_ for t in T_) <= D_r[r] for r in R_)
 
-
-# R13
+# R13: Capacidad maxima de almacenamiento
 modelo.addConstrs(quicksum( I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] + 
                             quicksum(T[r,i,j,t] for j in I_ if j != i) for r in R_ for p in P_ ) <= A[i]
                             for i in I_ for t in T_)
 
-# R14
+# R14:          TODO: ta meio raro en el informe, asi que lo dejo vacio por ahora
 modelo.addConstrs(r[o, i, t] == r[o, i, t-1] for o in O_ for i in I_ for t in range(2, m+1))
 
-# R15:
+# R15: Capacidad maxima almacenamiento
 modelo.addConstrs(quicksum(r[o, i, t] for o in O_) <= A[i] for i in I_ for t in T_)
 
-# R16:
+# R16: Permanencia minima en el albergue
 modelo.addConstrs(z_minus[i, t] == 0 for i in I_ for t in range(1, tau))
 modelo.addConstrs(z_minus[i, t] <= quicksum(z_plus[i, k] for k in range(t - tau + 1, t + 1)) for i in I_ for t in range(tau, m + 1))
 
-# R17:
+# R17: Flujo neto de personas en el albergue
 modelo.addConstrs(z[i, t] == z_plus[i, t] - z_minus[i, t] for i in I_ for t in T_)
 
-# R18:
+# R18: Personas sin albergue
 modelo.addConstrs(a[t] == D_t[t] - quicksum(x[i, t] for i in I_) for t in T_)
 
 
-# Funcion Objetivo: Minimizar costos
+# Funcion Objetivo: Minimizar la cantidad de personas sin albergue
 objetivo = quicksum(a[t] for t in T_)
 modelo.setObjective(objetivo, GRB.MINIMIZE)
 
@@ -208,26 +209,27 @@ modelo.optimize()
 
 ### TODO: Toda esta parte la verdad
 
-
 # El output en consola de este programa son los datos sobre el modelo, los datos sobre las variables
-# seran guardados en la carpeta de resultados
+# y su respectiva interpretacion seran guardados en la carpeta Resultados
+
+
 print("\n\n====================== Caracteristicas del modelo ===========================")
+# Esto se imprime en consola
 
-
-# Imprimir gap del modelo
+### Imprimir gap del modelo
 gap = modelo.getAttr("MIPGap")
 print(f"gap: {gap}")
 
-# Numero de variables
+### Numero de variables
 n_vars = len(modelo.getVars())
 print(f"Numero de Variables: {n_vars}")
 
-# Numero de restricciones
+### Numero de restricciones
 n_res = len(modelo.getConstrs())
 print(f"Numero de Restricciones: {n_res}")
 
 
-# Numero de Restricciones Activas
+### Numero de Restricciones Activas
 n_res_activas = 0       # Contamos el numero de restricciones con slack 0
 for constr in modelo.getConstrs():
     if constr.getAttr("slack") == 0:
@@ -236,50 +238,60 @@ for constr in modelo.getConstrs():
 print(f"Numero Restricciones Activas: {n_res_activas}")
 
 
-# Tiempo de ejecución
+### Tiempo de ejecución
 print(f"Tiempo de ejecución: {modelo.Runtime} segundos")
 
-# Valor optimo del modelo
+### Valor optimo del modelo
 print(f"Valor Optimo: {modelo.objVal}")
 
 
 
-# =================== Guardas valores de las variables ======================
+# =================== Guardar valores de las variables ======================
 
+# Esto se guarda en Resultados/Vars
+
+# Listas con las variables indices y nombres para guardarlos en forma de DataFrame
 Variables = [x,y,z,z_plus,z_minus,g,r,h,b,T,I,I_A,a,CN]
 VarNames = ["x","y","z","z_plus","z_minus","g","r","h","b","T","I","I_A","a","CN"]
 Indexes = [["i","t"], ["i","t"], ["i","t"], ["i","t"], ["i","t"], 
            ["r", "p", "i","t"], ["o", "i","t"], ["r", "p", "i","t"], 
            ["r", "i","t"], ["r", "i", "i'","t"], ["r", "p", "t"], ["r", "p", "i","t"], ["t"], ["r", "p", "i","t"]]
 
+
+# Por cada variable, se crea un DataFrame entregando los valores de la variable por cada combinacion de indices
+# Estos se guardan en forma de archivo csv en la carpeta Resultados/Vars/
+
 for v, name, indx in zip(Variables, VarNames, Indexes):
     lst = []
-    if name == "a":
-        for _ in v:
-            data = (_,v[_].x)
-            lst.append(data)
-    else:
-        for _ in v:      
-            data = _ + (v[_].x,)
-            lst.append(data)
+    
+    for tupla_indices in v:
+        if name == "a":     # Debido a que tiene un solo indice este se trata de un int y no de una tupla como los otros
+            indice = tupla_indices
+            data = (tupla_indices, v[tupla_indices].x)
+        else:
+            data = tupla_indices + (v[tupla_indices].x,)
+        lst.append(data)
     
     indx.append(name)
     columns = indx
     df = pd.DataFrame(lst, columns=columns)
     
-    df.to_csv(f"Resultados/Vars/{name}.csv", columns=columns, header=True)
+    df.to_csv(f"Resultados/Vars/{name}.csv", columns=columns)
 
 
 
 # ======================= Creacion de Graficos ============================
 
-# Grafico cantidad de personas en todos los albergues por dia
+# Esto se guarda en Resultados/Graficos
+# Para esto se usa el modulo matplotlib
+
+### Grafico cantidad de personas en todos los albergues por dia
 plt.style.use('ggplot')
 
-y_axis = [sum(x[i,t].X for i in I_) for t in T_]
+y_axis = [sum(x[i,t].X for i in I_) for t in T_]    # Cantidad total de personas refugiadas en dia t
 x_axis = T_
 
-# plot
+
 fig, ax = plt.subplots()
 
 ax.bar(x_axis, y_axis, width=1, edgecolor="white", linewidth=0.7)
