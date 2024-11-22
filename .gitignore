@@ -1,1 +1,9 @@
 gurobi.log
+
+# Ignorar la carpeta Resultados
+/Resultados/
+
+# Otros archivos y carpetas que deseas ignorar
+*.pyc
+__pycache__/
+.env
