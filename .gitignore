@@ -8,3 +8,6 @@ gurobi.log
 __pycache__/
 .env
 /Resultados
+
+# Archivos .xlsx
+*.xlsx
