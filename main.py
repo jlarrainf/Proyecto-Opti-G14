@@ -100,9 +100,9 @@ A = {(i): A[i] for i in I_}                         # Almacenamiento en bodega
 MP = {(i): MP[i] for i in I_}                       # Maximo de personas en albergue
 
 ## TODO: Conseguir datos del excel
-D_t = {(t): 10 for t in T_}                         # Demanda diaria de alojamiento
-tau = 15                                            # Tiempo de permanencia minima en un albergue
-DR = {(r,p): 100 for r in R_ for p in P_}           # Cantidad inicial de donaciones
+D_t = {(t): 3600 for t in T_}                         # Demanda diaria de alojamiento
+tau = 3                                            # Tiempo de permanencia minima en un albergue
+DR = {(r,p): 50 for r in R_ for p in P_}           # Cantidad inicial de donaciones
 
 
 D_r = {(r): sum(DR[r,p] for p in P_) for r in R_}   # Cantidad inicial total de donaciones del recurso r
@@ -181,7 +181,7 @@ modelo.addConstrs(quicksum( I_A[r, p, i, t] + g[r, p, i, t] + h[r, p, i, t] +
                             quicksum(T[r,i,j,t] for j in I_ if j != i) for r in R_ for p in P_ ) <= A[i]
                             for i in I_ for t in T_)
 
-# R14:          TODO: ta meio raro en el informe, asi que lo dejo vacio por ahora
+# R14: Los recursos operativos son los mismos todos los dias
 modelo.addConstrs(r[o, i, t] == r[o, i, t-1] for o in O_ for i in I_ for t in range(2, m+1))
 
 # R15: Capacidad maxima almacenamiento
@@ -285,30 +285,41 @@ for v, name, indx in zip(Variables, VarNames, Indexes):
 # Esto se guarda en Resultados/Graficos
 # Para esto se usa el modulo matplotlib
 
-### Grafico cantidad de personas en todos los albergues por dia
+### Cantidad de personas refugiadas en un albergue por dia
 plt.style.use('ggplot')
 
 y_axis = [sum(x[i,t].X for i in I_) for t in T_]    # Cantidad total de personas refugiadas en dia t
 x_axis = T_
 
+# Ajustamos el tamaño del grafico resultante
+fig, ax = plt.subplots(figsize=(8,6))
 
-fig, ax = plt.subplots()
-
+plt.title("Cantidad de personas refugiadas por dia")
 ax.bar(x_axis, y_axis, width=1, edgecolor="white", linewidth=0.7)
 
-ax.set(xlim=(0, 8), xticks=np.arange(1, 8),
-       ylim=(0, 8), yticks=np.arange(1, 8))
+ax.set(xlim=(1, m+1), xticks=np.arange(1, m+1),
+       ylim=(0, 100), yticks=np.arange(0, 101, 10))
 
 plt.savefig("Resultados/Graficos/Cantidad de personas refugiadas por dia")
 
 
 
+### Numero de albergues habilitados por dia
+
+y_axis = [sum(y[i,t].X for i in I_) for t in T_]    # Cantidad total de personas refugiadas en dia t
+x_axis = T_
 
 
+# Ajustamos el tamaño del grafico resultante
+fig, ax = plt.subplots(figsize=(12,8))
 
+plt.title("Numero de albergues habilitados por dia")
+ax.bar(x_axis, y_axis, width=1, edgecolor="white", linewidth=2)
 
+ax.set(xlim=(0, m+1), xticks=np.arange(1, m+1),
+       ylim=(0, n+1), yticks=np.arange(1, n+1))
 
-
+plt.savefig("Resultados/Graficos/Numero de albergues habilitados por dia")
 
 
 
